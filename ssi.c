@@ -4,71 +4,132 @@
 #include <unistd.h>
 #include <limits.h>
 #include <readline/readline.h>
-#include <readline/history.h>
+#include <stdbool.h>
 
 int main() {
 
-    const char *username = getlogin();
-    
     /* HOST_NAME_MAX defined in <limits.h>,
     add 1 to account for null terminator */
     char hostname[HOST_NAME_MAX + 1];
-    if (gethostname(hostname, sizeof(hostname)) == -1) {
-        printf("error, no hostname");
-    } 
-    else {
-        printf("%s\n", hostname);
-    }
-    // PATH_MAX defined in <limits.h>
+
+    /* PATH_MAX defined in <limits.h> */
     char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
-        printf("error, cannot find cwd");
-    }
-    else {
-        printf("%s\n", cwd);
-    }
 
-    char prompt[strlen(username) + HOST_NAME_MAX + PATH_MAX + 6];
+    /* separate arguments by spaces */
+    const char *delimiter = " ";
 
-    int prompt_len = snprintf(prompt, sizeof(prompt), "%s@%s: %s >", username, hostname, cwd);
-    if (prompt_len < 0) {
-        printf("error");
-    }
-    else if (prompt_len >= sizeof(prompt)) {
-        printf("prompt was truncated");
-    } 
-    else {
-        printf("%s\n", prompt);
-    }
-    
-    // const char* prompt = "username@hostname: /home/username >";
-    // const char* prompt = ({"%s\n"}, username,"@",{"%s\n"}, hostname,":", pwd)
+    char *token;
 
-    int end_session = 0;
+    while (1) {
 
-   /* while (!end_session) {
-       // display prompt
-       printf("SSI >");
-       // read user input
-       char *input = readline(prompt);
+        const char *username = getlogin();
 
-       // check if there is any input
-       if (input == NULL) {
-        return 0;
-       }
-       else if (*input != '\0') {
-        // add to history
-       }
-       // check if end_session is still true
+        char **args = NULL;
 
-       // something ends session
-       // end_session = 1;
+        char **args_temp = NULL;
 
-       // free allocated memory
+        bool realloc_failed = false;
+
+        /* used to keep track of num elements in args[] */
+        int num_args = 0;
+        
+        /* check if gethostname was successful */
+        if (gethostname(hostname, sizeof(hostname)) == -1) {
+            printf("error, no hostname");
+        } 
+        
+        /* check if getcwd was successful */
+        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            printf("error, cannot find cwd");
+        }
+
+        /* size of prompt must account for size of username, host, other characters & spaces */
+        char prompt[strlen(username) + HOST_NAME_MAX + PATH_MAX + 7];
+        
+        /* store formatted prompt in array, return val stored in prompt_len */
+        int prompt_len = snprintf(prompt, sizeof(prompt), "%s@%s: %s > ", username, hostname, cwd);
+        if (prompt_len < 0) {
+            printf("error");
+        }
+        else if (prompt_len >= sizeof(prompt)) {
+            printf("prompt was truncated");
+        } 
+       
+        /* display prompt, check for user input */
+        char *input = readline(prompt);
+
+        /* check if ctrl + D was pressed (EOF) */
+        if (input == NULL) {
+            printf("Ending session, ");
+            break;
+        }
+
+        /* if user presses Enter, restart loop, display prompt again */
+        else if (*input == '\0') {
+            
+            /* free allocated memory first */
+            free(input);
+            continue;
+        }
+        
+        /* get first argument token */
+        token = strtok(input, delimiter);
+
+        /* continue parsing same string */
+        while (token != NULL) {
+
+            /* dynamically increase size of args_temp */
+            args_temp = realloc(args, (num_args + 1) * sizeof(char *));
+
+            /* make sure memory allocation was successful
+            if unsuccessful, exit while loop */
+            if (args_temp == NULL) {
+                printf("realloc failed");
+                realloc_failed = true;
+                break;
+            }
+            else {
+                args = args_temp;
+            }
+
+            /* store pointers to tokens in args */
+            args[num_args] = token;
+            num_args++;
+            token = strtok(NULL, delimiter);
+        }
+
+        /* if memory allocation failed, free memory
+        and restart while loop */
+        if (realloc_failed) {
+            printf("something went wrong, please enter a new command");
+            free(input);
+            free(args);
+            continue;
+        }
+        /* create room for & store last NULL element */
+        args_temp = realloc(args, (num_args + 1) * sizeof(char *));
+        
+        if (args_temp == NULL) {
+            printf("something went wrong, please enter a new command (2)");
+            free(input);
+            free(args);
+            continue;
+        }
+        else {
+            args = args_temp;
+        }
+        args[num_args] = NULL;
+        
+        /* temp test tokenization */
+        for (int i = 0; i < num_args; i++) {
+            printf("%s\n", args[i]);
+        }
+        
         free(input);
-    } */
+        free(args);
+    } 
     
-    printf("See ya");
+    printf("bye bye\n");
     return 0;
 
 }

@@ -1,2 +1,2 @@
 ssi: ssi.c
-	gcc ssi.c -o ssi
+	gcc ssi.c -lreadline -o ssi
