@@ -39,6 +39,12 @@ int main() {
 
         pid_t pid;
 
+        int ret_home_dir;
+
+        char *new_dir_path;
+
+        int chdir_success;
+
         /* used to keep track of num elements in args[] */
         int num_args = 0;
         
@@ -131,6 +137,53 @@ int main() {
             args = args_temp;
         }
         args[num_args] = NULL;
+
+        if (strcmp(args[0], "cd") == 0 && (args[1] == NULL || strcmp(args[1], "~") == 0)) {
+            
+            /* find users home directory */
+            const char *home_dir = getenv("HOME");
+
+            /* check if getenv() succeeded */
+            if (home_dir == NULL) {
+                perror("error finding home directory");
+                free(input);
+                free(args);
+                continue;
+            } 
+            else {
+                ret_home_dir = chdir(home_dir);
+            }
+            /* check if chdir succeeded */
+            if (ret_home_dir == -1) {
+                perror("return to home directory failed");
+                free(input);
+                free(args);
+                continue;
+            } 
+            else {
+                free(input);
+                free(args);
+                continue;
+            }
+        } 
+        else if (strcmp(args[0], "cd") == 0) {
+            /* args[1] will contain the new path */
+            new_dir_path = args[1];
+            chdir_success = chdir(new_dir_path);
+
+            /* check if chdir succeeded */
+            if (chdir_success == -1) {
+                perror("change directory failed");
+                free(input);
+                free(args);  
+                continue;
+            }
+            else {
+                free(input);
+                free(args);
+                continue;
+            }
+        }
         
         pid = fork();
 
@@ -154,6 +207,7 @@ int main() {
 
         /* in parent process */
         else {
+            
             /* wait until child process is done */
             int wait_result = wait(NULL);
 
