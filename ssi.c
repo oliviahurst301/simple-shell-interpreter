@@ -138,6 +138,7 @@ int main() {
         }
         args[num_args] = NULL;
 
+        /* check if user wants to go to home directory (cd or cd ~) */
         if (strcmp(args[0], "cd") == 0 && (args[1] == NULL || strcmp(args[1], "~") == 0)) {
             
             /* find users home directory */
@@ -184,7 +185,49 @@ int main() {
                 continue;
             }
         }
+
+        /* check if we want to execute background process */
+        else if (strcmp(args[0], "bg") == 0) {
+
+            if (args[1] == NULL) {
+                fprintf(stderr, "improper bg command\n");
+                free(input);
+                free(args);
+                continue;
+            } 
+            else {
+                pid = fork();
+
+                if (pid < 0) {
+                    free(input);
+                    free(args);
+                    perror("fork failed");
+                    continue;
+                } 
+                
+                /* child process, background */
+                else if (pid == 0) {
+
+                    /* receives command and args after bg */
+                    execvp(args[1], args + 1);
+
+                    /* only reached if execvp fails */
+                    perror("execvp failed");
+                    free(input);
+                    free(args);
+                    exit(1);
+                }
+                
+                /* parent process, foreground */
+                else {
+                    free(input);
+                    free(args);
+                    continue;
+                }
+            }
+        }
         
+        /* no background process, continue as normal */
         pid = fork();
 
         /* fork fail */
