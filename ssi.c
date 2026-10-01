@@ -7,6 +7,18 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
+#include <errno.h>
+
+/* ***GLOABL VARIABLES*** */
+
+/* must be access by both sigint_handler and main */
+volatile sig_atomic_t foreground_pid = 0;
+
+/* keep track of whether interrupt happened */
+volatile sig_atomic_t sigint_received = 0;
+
+/* ********************** */
 
 /* linked list struct to store info of background processes */
 struct bg_process {
@@ -15,7 +27,55 @@ struct bg_process {
     struct bg_process *next;
 };
 
+void sigint_handler(int sig) {
+    
+    /* if foreground_pid > 0, a child process is running */
+    if (foreground_pid > 0) {
+        
+        /* send SIGINT to foreground child process */
+        kill(foreground_pid, SIGINT);
+    } 
+    /* move to new line when no foreground child process is running */
+    else {
+        sigint_received = 1;
+    }
+}
+
+int check_sigint(void) {
+    if (sigint_received) {
+        rl_done = 1;
+    }
+    return 0;
+}
+
 int main() {
+
+    /* set up SIGINT handling */
+    struct sigaction sa;
+
+    sa.sa_handler = sigint_handler;
+    
+    int sigemptyset_success = sigemptyset(&sa.sa_mask);
+
+    /* terminate ssi if sigemptyset fails */
+    if (sigemptyset_success == -1) {
+        perror("sigemptyset failed");
+        exit(1);
+    }
+
+    sa.sa_flags = 0;
+    
+    int sigaction_success = sigaction(SIGINT, &sa, NULL);
+
+    /* terminate ssi if sigaction fails */
+    if (sigaction_success == -1) {
+        perror("sigaction failed");
+        exit(1);
+    }
+
+    rl_event_hook = check_sigint;
+
+    /* other variables for later use */
 
     /* HOST_NAME_MAX defined in <limits.h>,
     add 1 to account for null terminator */
@@ -85,6 +145,15 @@ int main() {
        
         /* display prompt, check for user input */
         char *input = readline(prompt);
+
+        if (sigint_received) {
+            sigint_received = 0;
+            
+            if (input != NULL) {
+                free(input);
+            } 
+            continue;
+        } 
 
         /* check if ctrl + D was pressed (EOF) */
         if (input == NULL) {
@@ -252,7 +321,7 @@ int main() {
                 count++;
                 current = current -> next;
             }
-            printf("Total Background jobs: %d\n", count);
+            printf("Total Background jobs:  %d\n", count);
             free(input);
             free(args);
             continue;
@@ -281,6 +350,7 @@ int main() {
                 else if (pid == 0) {
 
                     /* receives command and args after bg */
+                    signal(SIGINT, SIG_IGN);
                     execvp(args[1], args + 1);
 
                     /* only reached if execvp fails */
@@ -442,8 +512,14 @@ int main() {
         /* in parent process */
         else {
             
-            /* wait for specified child process to finish */
-            int wait_result = waitpid(pid, &status, 0);
+            foreground_pid = pid;
+
+            int wait_result;
+
+            do {
+                wait_result = waitpid(pid, &status, 0);
+            }
+            while (wait_result == -1 && errno == EINTR);
 
             /* if wait fails, it returns -1 */
             if (wait_result == -1) {
@@ -452,6 +528,9 @@ int main() {
                 free(args);
                 exit(1);
             } 
+
+            /* child process is done */
+            foreground_pid = 0;
             
             /* free allocated memory */
             free(input);
