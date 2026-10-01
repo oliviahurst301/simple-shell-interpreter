@@ -8,6 +8,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+struct bg_process {
+    pid_t bg_pid;
+    char *execution_args;
+    struct bg_process *next;
+};
+
 int main() {
 
     /* HOST_NAME_MAX defined in <limits.h>,
@@ -21,6 +27,8 @@ int main() {
     const char *delimiter = " ";
 
     char *token;
+
+    struct bg_process *head = NULL;
 
     while (1) {
 
@@ -184,7 +192,21 @@ int main() {
                 free(args);
                 continue;
             }
-        }
+        } 
+        else if (strcmp(args[0], "bglist") == 0) {
+            int count = 0;
+            struct bg_process *current = head;
+
+            while (current != NULL) {
+                printf("%d: %s\n", current -> bg_pid, current -> execution_args);
+                count++;
+                current = current -> next;
+            }
+            printf("Total Background jobs: %d\n", count);
+            free(input);
+            free(args);
+            continue;
+        }        
 
         /* check if we want to execute background process */
         else if (strcmp(args[0], "bg") == 0) {
@@ -199,13 +221,13 @@ int main() {
                 pid = fork();
 
                 if (pid < 0) {
+                    perror("fork failed");
                     free(input);
                     free(args);
-                    perror("fork failed");
                     continue;
                 } 
                 
-                /* child process, background */
+                /* child process */
                 else if (pid == 0) {
 
                     /* receives command and args after bg */
@@ -218,8 +240,125 @@ int main() {
                     exit(1);
                 }
                 
-                /* parent process, foreground */
+                /* parent process */
                 else {
+
+                    /* determine how much memory is needed */
+                    int which_len = strlen("which ") + strlen(args[1]) + 1; /* +1 for null terminator */
+
+                    /* allocate amount of memory from above */
+                    char *which_command = malloc(which_len);
+
+                    /* ensure allocation success */
+                    if (which_command == NULL) {
+                        perror("allocation failed");
+                        free(input);
+                        free(args);
+                        continue;
+                    }
+
+                    /* store result into allocated memory */
+                    int which_result = snprintf(which_command, which_len, "which %s", args[1]);
+
+                    /* check if encountered an error or was truncated */
+                    if (which_result < 0 || which_result >= which_len) {
+                        fprintf(stderr, "failed to create which command\n");
+                        free(input);
+                        free(args);
+                        free(which_command);
+                        continue;
+                    }  
+
+                    /* check command to run & its output */
+                    FILE *which_pipe = popen(which_command, "r");
+
+                    if (which_pipe == NULL) {
+                        perror("popen failed");
+                        free(input);
+                        free(args);
+                        free(which_command);
+                        continue;
+                    } 
+
+                    char absolute_path[PATH_MAX];
+
+                    /* store line from which_pipe in char array, make sure it worked */
+                    if (fgets(absolute_path, sizeof(absolute_path), which_pipe) == NULL) {
+                        fprintf(stderr, "no output produced\n");
+                        pclose(which_pipe);
+                        free(input);
+                        free(args);
+                        free(which_command);
+                        continue;
+                    } 
+                    /* upon success, replace newline char which null terminator */
+                    else {
+                        absolute_path[strcspn(absolute_path, "\n")] = '\0';
+                    }
+
+                    int close_result = pclose(which_pipe);
+
+                    /* make sure file closed properly */
+                    if (close_result == -1) {
+                        perror("pclose failed");
+                        free(input);
+                        free(args);
+                        free(which_command);
+                        continue;
+                    } 
+                    else {
+                        free(which_command);
+                    }
+
+                    
+                    /* calculate space needed for command + arguments */
+                    int bg_args_len = strlen(absolute_path) + 1; /* to account for '\0' */
+
+                    /* start at 2 to account for args after command */
+                    for (int i = 2; i < num_args; i++) {
+                        bg_args_len += (strlen(args[i]) + 1);
+                    }
+
+                    /* allocate str */
+                    char *bg_args = malloc(bg_args_len);
+
+                    if (bg_args == NULL) {
+                        perror("allocation failed");
+                        free(input);
+                        free(args);
+                        continue;
+                    } 
+                    /* replace bg with null character */
+                    else {
+                        bg_args[0] = '\0';
+
+                        /* put absolute_path into bg_args */
+                        strcat(bg_args, absolute_path);
+
+                        /* add remaining args */
+                        for (int i = 2; i < num_args; i++) {
+                            strcat(bg_args, " ");
+                            strcat(bg_args, args[i]);
+                        }
+                    }
+
+                    /* allocate space for another bg process node */
+                    struct bg_process *new_node = malloc(sizeof(struct bg_process));
+
+                    /* make sure allocation was successful */
+                    if (new_node == NULL) {
+                        perror("memory allocation failed");
+                        free(input);
+                        free(args);
+                        free(bg_args);
+                        continue;
+                    } 
+                    else {
+                        new_node -> bg_pid = pid;
+                        new_node -> execution_args = bg_args;
+                        new_node -> next = head;
+                        head = new_node;
+                    }
                     free(input);
                     free(args);
                     continue;
@@ -232,9 +371,9 @@ int main() {
 
         /* fork fail */
         if (pid < 0) {
+            perror("fork failed");
             free(input);
             free(args);
-            perror("fork failed");
             continue;
         }
         /* in child process */
