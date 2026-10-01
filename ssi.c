@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+/* linked list struct to store info of background processes */
 struct bg_process {
     pid_t bg_pid;
     char *execution_args;
@@ -146,6 +147,50 @@ int main() {
         }
         args[num_args] = NULL;
 
+        int status;
+
+        struct bg_process *current = head;
+        struct bg_process *previous = NULL;
+
+        /* check status of background proccesses */
+        while (current != NULL) {
+            int waitpid_result = waitpid(current -> bg_pid, &status, WNOHANG);
+
+            /* check for errors */
+            if (waitpid_result == -1) {
+                perror("error");
+                previous = current;
+                current = current -> next;
+            }
+
+            /* child proccess still going, move to next node */
+            else if (waitpid_result == 0) {
+                previous = current;
+                current = current -> next;
+            }
+            
+            /* if pid > 0 returned, child has finished */
+            else if (waitpid_result > 0) {
+                printf("%d: %s has terminated.\n", current -> bg_pid, current -> execution_args);
+
+                /* save next node before freeing current node */
+                struct bg_process *next = current -> next;
+                
+                /* remove current from list */
+                if (previous == NULL) {
+                    head = current -> next;
+                } 
+                else {
+                    previous -> next = current -> next;
+                }
+
+                free(current -> execution_args);
+                free(current);
+
+                current = next;
+            }
+        }
+
         /* check if user wants to go to home directory (cd or cd ~) */
         if (strcmp(args[0], "cd") == 0 && (args[1] == NULL || strcmp(args[1], "~") == 0)) {
             
@@ -162,6 +207,7 @@ int main() {
             else {
                 ret_home_dir = chdir(home_dir);
             }
+            
             /* check if chdir succeeded */
             if (ret_home_dir == -1) {
                 perror("return to home directory failed");
@@ -176,6 +222,7 @@ int main() {
             }
         } 
         else if (strcmp(args[0], "cd") == 0) {
+            
             /* args[1] will contain the new path */
             new_dir_path = args[1];
             chdir_success = chdir(new_dir_path);
@@ -193,10 +240,13 @@ int main() {
                 continue;
             }
         } 
+
+        /* check if user entered bglist */
         else if (strcmp(args[0], "bglist") == 0) {
             int count = 0;
             struct bg_process *current = head;
 
+            /* go through list of bg processes, display info */
             while (current != NULL) {
                 printf("%d: %s\n", current -> bg_pid, current -> execution_args);
                 count++;
@@ -328,6 +378,7 @@ int main() {
                         free(args);
                         continue;
                     } 
+                    
                     /* replace bg with null character */
                     else {
                         bg_args[0] = '\0';
@@ -376,6 +427,7 @@ int main() {
             free(args);
             continue;
         }
+        
         /* in child process */
         else if (pid == 0) {
             execvp(args[0], args);
@@ -390,17 +442,17 @@ int main() {
         /* in parent process */
         else {
             
-            /* wait until child process is done */
-            int wait_result = wait(NULL);
+            /* wait for specified child process to finish */
+            int wait_result = waitpid(pid, &status, 0);
 
             /* if wait fails, it returns -1 */
             if (wait_result == -1) {
-                perror("wait failed");
+                perror("waitpid error");
                 free(input);
                 free(args);
                 exit(1);
             } 
-
+            
             /* free allocated memory */
             free(input);
             free(args);
