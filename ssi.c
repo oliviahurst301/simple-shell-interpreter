@@ -107,6 +107,50 @@ void print_bglist(struct bg_process *head) {
     printf("Total Background jobs:  %d\n", count);
 }
 
+void create_prompt(char *prompt, size_t size) {
+    
+     /* HOST_NAME_MAX defined in <limits.h>,
+    add 1 to account for null terminator */
+    char hostname[HOST_NAME_MAX + 1];
+
+    /* PATH_MAX defined in <limits.h> */
+    char cwd[PATH_MAX];
+    
+    const char *username = getlogin();
+
+    if (username == NULL) {
+        perror("getlogin() failed");
+        exit(1);
+    }
+        
+    /* check if gethostname was successful */
+    if (gethostname(hostname, sizeof(hostname)) == -1) {
+        perror("error, no hostname");
+        exit(1);
+    } 
+        
+    /* check if getcwd was successful */
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("error, cannot find cwd");
+        exit(1);
+    }
+
+    /* store formatted prompt in memory, return val stored in prompt_len */
+    int prompt_len = snprintf(prompt, size, "%s@%s: %s > ", username, hostname, cwd);
+
+    /* check for error */
+    if (prompt_len < 0) {
+        perror("error creating prompt\n");
+        exit(1);
+    }
+
+    /* check if prompt was truncated */
+    else if (prompt_len >= size) {
+        perror("prompt was truncated\n");
+        exit(1);
+    } 
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -136,13 +180,6 @@ int main() {
 
     /* other variables for later use */
 
-    /* HOST_NAME_MAX defined in <limits.h>,
-    add 1 to account for null terminator */
-    char hostname[HOST_NAME_MAX + 1];
-
-    /* PATH_MAX defined in <limits.h> */
-    char cwd[PATH_MAX];
-
     /* separate arguments by spaces */
     const char *delimiter = " ";
 
@@ -151,13 +188,6 @@ int main() {
     struct bg_process *head = NULL;
 
     while (1) {
-
-        const char *username = getlogin();
-
-        if (username == NULL) {
-            perror("getlogin() failed");
-            exit(1);
-        }
 
         char **args = NULL;
 
@@ -175,32 +205,11 @@ int main() {
 
         /* used to keep track of num elements in args[] */
         int num_args = 0;
-        
-        /* check if gethostname was successful */
-        if (gethostname(hostname, sizeof(hostname)) == -1) {
-            perror("error, no hostname");
-            exit(1);
-        } 
-        
-        /* check if getcwd was successful */
-        if (getcwd(cwd, sizeof(cwd)) == NULL) {
-            perror("error, cannot find cwd");
-            exit(1);
-        }
 
         /* size of prompt must account for size of username, host, other characters & spaces */
-        char prompt[strlen(username) + HOST_NAME_MAX + PATH_MAX + 7];
-        
-        /* store formatted prompt in array, return val stored in prompt_len */
-        int prompt_len = snprintf(prompt, sizeof(prompt), "%s@%s: %s > ", username, hostname, cwd);
-        if (prompt_len < 0) {
-            perror("error creating prompt\n");
-            exit(1);
-        }
-        else if (prompt_len >= sizeof(prompt)) {
-            perror("prompt was truncated\n");
-            exit(1);
-        } 
+        char prompt[HOST_NAME_MAX + PATH_MAX + 50];
+
+        create_prompt(prompt, sizeof(prompt));
        
         /* display prompt, check for user input */
         char *input = readline(prompt);
@@ -330,7 +339,7 @@ int main() {
         /* check if user entered bglist */
         else if (strcmp(args[0], "bglist") == 0) {
             print_bglist(head);
-            
+
             free(input);
             free(args);
             continue;
