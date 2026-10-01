@@ -48,6 +48,52 @@ int check_sigint(void) {
     return 0;
 }
 
+void check_bg_processes(struct bg_process **head) {
+    
+    int status;
+    struct bg_process *current = *head;
+    struct bg_process *previous = NULL;
+
+    /* check status of background proccesses */
+    while (current != NULL) {
+        int waitpid_result = waitpid(current -> bg_pid, &status, WNOHANG);
+
+        /* check for errors */
+        if (waitpid_result == -1) {
+            perror("error");
+            previous = current;
+            current = current -> next;
+        }
+
+        /* child proccess still going, move to next node */
+        else if (waitpid_result == 0) {
+            previous = current;
+            current = current -> next;
+        }
+        
+        /* if pid > 0 returned, child has finished */
+        else if (waitpid_result > 0) {
+            printf("%d: %s has terminated.\n", current -> bg_pid, current -> execution_args);
+
+            /* save next node before freeing current node */
+            struct bg_process *next = current -> next;
+            
+            /* remove current from list */
+            if (previous == NULL) {
+                *head = current -> next;
+            } 
+            else {
+                previous -> next = current -> next;
+            }
+
+            free(current -> execution_args);
+            free(current);
+
+            current = next;
+        }
+    }
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -216,49 +262,7 @@ int main() {
         }
         args[num_args] = NULL;
 
-        int status;
-
-        struct bg_process *current = head;
-        struct bg_process *previous = NULL;
-
-        /* check status of background proccesses */
-        while (current != NULL) {
-            int waitpid_result = waitpid(current -> bg_pid, &status, WNOHANG);
-
-            /* check for errors */
-            if (waitpid_result == -1) {
-                perror("error");
-                previous = current;
-                current = current -> next;
-            }
-
-            /* child proccess still going, move to next node */
-            else if (waitpid_result == 0) {
-                previous = current;
-                current = current -> next;
-            }
-            
-            /* if pid > 0 returned, child has finished */
-            else if (waitpid_result > 0) {
-                printf("%d: %s has terminated.\n", current -> bg_pid, current -> execution_args);
-
-                /* save next node before freeing current node */
-                struct bg_process *next = current -> next;
-                
-                /* remove current from list */
-                if (previous == NULL) {
-                    head = current -> next;
-                } 
-                else {
-                    previous -> next = current -> next;
-                }
-
-                free(current -> execution_args);
-                free(current);
-
-                current = next;
-            }
-        }
+        check_bg_processes(&head);
 
         /* check if user wants to go to home directory (cd or cd ~) */
         if (strcmp(args[0], "cd") == 0 && (args[1] == NULL || strcmp(args[1], "~") == 0)) {
@@ -515,6 +519,8 @@ int main() {
             foreground_pid = pid;
 
             int wait_result;
+
+            int status;
 
             do {
                 wait_result = waitpid(pid, &status, 0);
