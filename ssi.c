@@ -94,6 +94,19 @@ void check_bg_processes(struct bg_process **head) {
     }
 }
 
+void print_bglist(struct bg_process *head) {
+    int count = 0;
+    struct bg_process *current = head;
+
+    /* go through list of bg processes, display info */
+    while (current != NULL) {
+        printf("%d: %s\n", current -> bg_pid, current -> execution_args);
+        count++;
+        current = current -> next;
+    }
+    printf("Total Background jobs:  %d\n", count);
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -316,16 +329,8 @@ int main() {
 
         /* check if user entered bglist */
         else if (strcmp(args[0], "bglist") == 0) {
-            int count = 0;
-            struct bg_process *current = head;
-
-            /* go through list of bg processes, display info */
-            while (current != NULL) {
-                printf("%d: %s\n", current -> bg_pid, current -> execution_args);
-                count++;
-                current = current -> next;
-            }
-            printf("Total Background jobs:  %d\n", count);
+            print_bglist(head);
+            
             free(input);
             free(args);
             continue;
