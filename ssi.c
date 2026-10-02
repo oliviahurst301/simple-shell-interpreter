@@ -264,6 +264,48 @@ void execute_foreground(char **args) {
     }
 }
 
+char **tokenize_args(char *input) {
+    char **args = NULL;
+    char *token;
+    int num_args = 0;
+
+    token = strtok(input, " ");
+
+    /* continue parsing same string */
+    while (token != NULL) {
+
+        /* dynamically increase size of args_temp */
+        char **args_temp = realloc(args, (num_args + 1) * sizeof(char *));
+
+        /* make sure memory allocation was successful
+        if unsuccessful, exit while loop */
+        if (args_temp == NULL) {
+            printf("realloc failed\n");
+            free(args);
+            return NULL;
+        }
+        args = args_temp;
+        args[num_args] = token;
+        num_args++;
+
+        token = strtok(NULL, " ");
+    }
+
+    /* create room for & store last NULL element */
+    char **args_temp = realloc(args, (num_args + 1) * sizeof(char *));
+
+    if (args_temp == NULL) {
+        printf("something went wrong, please enter a new command");
+        free(input);
+        free(args);
+        return NULL;
+    }
+    args = args_temp;
+    args[num_args] = NULL;
+
+    return args;
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -293,29 +335,17 @@ int main() {
 
     /* other variables for later use */
 
-    /* separate arguments by spaces */
-    const char *delimiter = " ";
-
-    char *token;
+    int num_args = 0;
 
     struct bg_process *head = NULL;
 
     while (1) {
-
-        char **args = NULL;
-
-        char **args_temp = NULL;
 
         bool realloc_failed = false;
 
         int ret_home_dir;
 
         char *new_dir_path;
-
-        int chdir_success;
-
-        /* used to keep track of num elements in args[] */
-        int num_args = 0;
 
         /* size of prompt must account for size of username, host, other characters & spaces */
         char prompt[HOST_NAME_MAX + PATH_MAX + 50];
@@ -346,55 +376,12 @@ int main() {
             free(input);
             continue;
         }
-        
-        /* get first argument token */
-        token = strtok(input, delimiter);
+        char **args = tokenize_args(input);
 
-        /* continue parsing same string */
-        while (token != NULL) {
-
-            /* dynamically increase size of args_temp */
-            args_temp = realloc(args, (num_args + 1) * sizeof(char *));
-
-            /* make sure memory allocation was successful
-            if unsuccessful, exit while loop */
-            if (args_temp == NULL) {
-                printf("realloc failed");
-                realloc_failed = true;
-                break;
-            }
-            else {
-                args = args_temp;
-            }
-
-            /* store tokens in args */
-            args[num_args] = token;
-            num_args++;
-            token = strtok(NULL, delimiter);
-        }
-
-        /* if memory allocation failed, free memory
-        and restart while loop */
-        if (realloc_failed) {
-            printf("something went wrong, please enter a new command");
+        if (args == NULL) {
             free(input);
-            free(args);
             continue;
         }
-        /* create room for & store last NULL element */
-        args_temp = realloc(args, (num_args + 1) * sizeof(char *));
-        
-        if (args_temp == NULL) {
-            printf("something went wrong, please enter a new command");
-            free(input);
-            free(args);
-            continue;
-        }
-        else {
-            args = args_temp;
-        }
-
-        args[num_args] = NULL;
 
         check_bg_processes(&head);
 
