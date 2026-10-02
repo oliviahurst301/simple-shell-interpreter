@@ -151,6 +151,34 @@ void create_prompt(char *prompt, size_t size) {
     } 
 }
 
+void change_directory(char **args) {
+
+    int chdir_result;
+
+    if (args[1] == NULL || strcmp(args[1], "~") == 0) {
+        
+        /* find users home directory */
+        const char *home_dir = getenv("HOME");
+
+        /* check if getenv() succeeded */
+        if (home_dir == NULL) {
+            perror("error finding home directory");
+            return;
+        } 
+        else {
+            chdir_result = chdir(home_dir);
+        }
+    }
+    else {
+        chdir_result = chdir(args[1]);
+    }
+    
+    /* check if chdir succeeded */
+    if (chdir_result == -1) {
+        perror("change directory failed");
+    }
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -286,55 +314,13 @@ int main() {
 
         check_bg_processes(&head);
 
-        /* check if user wants to go to home directory (cd or cd ~) */
-        if (strcmp(args[0], "cd") == 0 && (args[1] == NULL || strcmp(args[1], "~") == 0)) {
-            
-            /* find users home directory */
-            const char *home_dir = getenv("HOME");
+        if (strcmp(args[0], "cd") == 0) {
+            change_directory(args);
 
-            /* check if getenv() succeeded */
-            if (home_dir == NULL) {
-                perror("error finding home directory");
-                free(input);
-                free(args);
-                continue;
-            } 
-            else {
-                ret_home_dir = chdir(home_dir);
-            }
-            
-            /* check if chdir succeeded */
-            if (ret_home_dir == -1) {
-                perror("return to home directory failed");
-                free(input);
-                free(args);
-                continue;
-            } 
-            else {
-                free(input);
-                free(args);
-                continue;
-            }
-        } 
-        else if (strcmp(args[0], "cd") == 0) {
-            
-            /* args[1] will contain the new path */
-            new_dir_path = args[1];
-            chdir_success = chdir(new_dir_path);
-
-            /* check if chdir succeeded */
-            if (chdir_success == -1) {
-                perror("change directory failed");
-                free(input);
-                free(args);  
-                continue;
-            }
-            else {
-                free(input);
-                free(args);
-                continue;
-            }
-        } 
+            free(input);
+            free(args);
+            continue;
+        }
 
         /* check if user entered bglist */
         else if (strcmp(args[0], "bglist") == 0) {
