@@ -221,6 +221,49 @@ void add_bg_process(struct bg_process **head, pid_t pid, char *command) {
     *head = new_node;
 }
 
+void execute_foreground(char **args) {
+    /* no background process, continue as normal */
+    pid_t pid = fork();
+
+    /* fork fail */
+    if (pid < 0) {
+        perror("fork failed");
+        return;
+    }
+    
+    /* in child process */
+    else if (pid == 0) {
+        execvp(args[0], args);
+        
+        /* this section only reached if execvp fails */
+        fprintf(stderr, "%s\n", strerror(errno));
+        exit(1);
+    }
+
+    /* in parent process */
+    else {
+        
+        foreground_pid = pid;
+
+        int wait_result;
+
+        int status;
+
+        do {
+            wait_result = waitpid(pid, &status, 0);
+        }
+        while (wait_result == -1 && errno == EINTR);
+
+        /* if wait fails, it returns -1 */
+        if (wait_result == -1) {
+            perror("waitpid error");
+        } 
+
+        /* child process is done */
+        foreground_pid = 0;
+    }
+}
+
 int main() {
 
     /* set up SIGINT handling */
@@ -495,53 +538,8 @@ int main() {
             free(args);
             continue;
         }
-        
-        /* no background process, continue as normal */
-        pid_t pid = fork();
-
-        /* fork fail */
-        if (pid < 0) {
-            perror("fork failed");
-            free(input);
-            free(args);
-            continue;
-        }
-        
-        /* in child process */
-        else if (pid == 0) {
-            execvp(args[0], args);
-            
-            /* this section only reached if execvp fails */
-            perror("execvp failed");
-            free(input);
-            free(args);
-            exit(1);
-        }
-
-        /* in parent process */
         else {
-            
-            foreground_pid = pid;
-
-            int wait_result;
-
-            int status;
-
-            do {
-                wait_result = waitpid(pid, &status, 0);
-            }
-            while (wait_result == -1 && errno == EINTR);
-
-            /* if wait fails, it returns -1 */
-            if (wait_result == -1) {
-                perror("waitpid error");
-                free(input);
-                free(args);
-                exit(1);
-            } 
-
-            /* child process is done */
-            foreground_pid = 0;
+            execute_foreground(args);
             
             /* free allocated memory */
             free(input);
