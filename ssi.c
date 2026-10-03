@@ -10,7 +10,7 @@
 #include <signal.h>
 #include <errno.h>
 
-/* ***GLOABL VARIABLES*** */
+/* --- GLOBAL VARIABLES --- */
 
 /* must be access by both sigint_handler and main */
 volatile sig_atomic_t foreground_pid = 0;
@@ -18,7 +18,7 @@ volatile sig_atomic_t foreground_pid = 0;
 /* keep track of whether interrupt happened */
 volatile sig_atomic_t sigint_received = 0;
 
-/* ********************** */
+/* ------------------------ */
 
 /* linked list struct to store info of background processes */
 struct bg_process {
@@ -27,7 +27,11 @@ struct bg_process {
     struct bg_process *next;
 };
 
+/* Handler function for SIGINT */
 void sigint_handler(int sig) {
+
+    /* parameter never used */
+    (void)sig;
     
     /* if foreground_pid > 0, a child process is running */
     if (foreground_pid > 0) {
@@ -35,6 +39,7 @@ void sigint_handler(int sig) {
         /* send SIGINT to foreground child process */
         kill(foreground_pid, SIGINT);
     } 
+    
     /* move to new line when no foreground child process is running */
     else {
         sigint_received = 1;
@@ -42,6 +47,7 @@ void sigint_handler(int sig) {
 }
 
 int check_sigint(void) {
+    
     if (sigint_received) {
         rl_done = 1;
     }
@@ -60,7 +66,7 @@ void check_bg_processes(struct bg_process **head) {
 
         /* check for errors */
         if (waitpid_result == -1) {
-            perror("error");
+            fprintf(stderr, "%s\n", strerror(errno));
             previous = current;
             current = current -> next;
         }
@@ -82,6 +88,7 @@ void check_bg_processes(struct bg_process **head) {
             if (previous == NULL) {
                 *head = current -> next;
             } 
+            
             else {
                 previous -> next = current -> next;
             }
@@ -95,6 +102,7 @@ void check_bg_processes(struct bg_process **head) {
 }
 
 void print_bglist(struct bg_process *head) {
+    
     int count = 0;
     struct bg_process *current = head;
 
@@ -106,6 +114,7 @@ void print_bglist(struct bg_process *head) {
     }
     printf("Total Background jobs:  %d\n", count);
 }
+
 
 void create_prompt(char *prompt, size_t size) {
     
@@ -151,10 +160,12 @@ void create_prompt(char *prompt, size_t size) {
     } 
 }
 
+
 void change_directory(char **args) {
 
     int chdir_result;
 
+    /* check if user trying to get to home dir */
     if (args[1] == NULL || strcmp(args[1], "~") == 0) {
         
         /* find users home directory */
@@ -165,27 +176,35 @@ void change_directory(char **args) {
             perror("error finding home directory");
             return;
         } 
+        
         else {
             chdir_result = chdir(home_dir);
         }
     }
+    
     else {
         chdir_result = chdir(args[1]);
     }
     
     /* check if chdir succeeded */
     if (chdir_result == -1) {
-        perror("change directory failed");
+        fprintf(stderr, "%s\n", strerror(errno));
     }
 }
 
+
+/* --- Creates child process for background command, 
+allows child and parent to execute at same time --- */
 pid_t start_bg_process (char **args) {
+    
     pid_t pid = fork();
 
     if (pid < 0) {
-        perror("fork failed");
+        perror("Fork failed");
         return -1;
-    }/* child process */
+    }
+    
+    /* child process */
     else if (pid == 0) {
 
         /* bg process should ignore SIGINT */
@@ -195,15 +214,18 @@ pid_t start_bg_process (char **args) {
         execvp(args[1], args + 1);
 
         /* only reached if execvp fails */
-        perror("execvp failed");
+        fprintf(stderr, "%s\n", strerror(errno));
         exit(1);
     } 
+    
     /* parent process */
     else {
         return pid;
     }
 }
 
+
+/* --- Adds background process node to linked list struct --- */
 void add_bg_process(struct bg_process **head, pid_t pid, char *command) {
     
     /* allocate space for another bg process node */
@@ -221,13 +243,17 @@ void add_bg_process(struct bg_process **head, pid_t pid, char *command) {
     *head = new_node;
 }
 
+
+/* --- Executes command as foreground process, 
+parents waits until child terminates --- */
 void execute_foreground(char **args) {
+    
     /* no background process, continue as normal */
     pid_t pid = fork();
 
     /* fork fail */
     if (pid < 0) {
-        perror("fork failed");
+        perror("Fork failed");
         return;
     }
     
@@ -249,22 +275,31 @@ void execute_foreground(char **args) {
 
         int status;
 
+        /* keep waiting for foreground process if waitpid() interrupted */
         do {
             wait_result = waitpid(pid, &status, 0);
         }
-        while (wait_result == -1 && errno == EINTR);
+        while (wait_result == -1 && errno == EINTR); /* EINTR = interrupted sys call */
 
         /* if wait fails, it returns -1 */
         if (wait_result == -1) {
             perror("waitpid error");
         } 
 
+        /* move to new line if foreground process terminated by SIGINT */
+        if (WIFSIGNALED(status)) {
+            printf("\n");
+        }
+
         /* child process is done */
         foreground_pid = 0;
     }
 }
 
+
+/* --- Splits user input into argv-style array --- */
 char **tokenize_args(char *input) {
+    
     char **args = NULL;
     char *token;
     int num_args = 0;
@@ -284,6 +319,7 @@ char **tokenize_args(char *input) {
             free(args);
             return NULL;
         }
+        /* can safely copy temp array into official array since allocation succeeded */
         args = args_temp;
         args[num_args] = token;
         num_args++;
@@ -300,19 +336,24 @@ char **tokenize_args(char *input) {
         free(args);
         return NULL;
     }
+
     args = args_temp;
     args[num_args] = NULL;
 
     return args;
 }
 
+
 int main() {
 
-    /* set up SIGINT handling */
+    /* --- set up SIGINT handling --- */
+    
     struct sigaction sa;
 
+    /* set sigint_handler as function to run when SIGINT received */
     sa.sa_handler = sigint_handler;
     
+    /* initialize signal mask -> no other signals blocked while handler runs */
     int sigemptyset_success = sigemptyset(&sa.sa_mask);
 
     /* terminate ssi if sigemptyset fails */
@@ -321,8 +362,10 @@ int main() {
         exit(1);
     }
 
+    /* use defaults sigaction behaviour w/o additional flags */
     sa.sa_flags = 0;
     
+    /* register handler for SIGINT */
     int sigaction_success = sigaction(SIGINT, &sa, NULL);
 
     /* terminate ssi if sigaction fails */
@@ -331,21 +374,18 @@ int main() {
         exit(1);
     }
 
+    /* tell readline() to periodically call check_sigint() while waiting for user input */
     rl_event_hook = check_sigint;
 
+    
     /* other variables for later use */
-
-    int num_args = 0;
 
     struct bg_process *head = NULL;
 
+    
     while (1) {
 
         bool realloc_failed = false;
-
-        int ret_home_dir;
-
-        char *new_dir_path;
 
         /* size of prompt must account for size of username, host, other characters & spaces */
         char prompt[HOST_NAME_MAX + PATH_MAX + 50];
@@ -355,12 +395,17 @@ int main() {
         /* display prompt, check for user input */
         char *input = readline(prompt);
 
+        /* check if ctrl + c pressed */
         if (sigint_received) {
+
+            /* reset flag for next SIGINT */
             sigint_received = 0;
             
             if (input != NULL) {
                 free(input);
             } 
+
+            /* restart while(1) to display new prompt */
             continue;
         } 
 
@@ -385,6 +430,7 @@ int main() {
 
         check_bg_processes(&head);
 
+        /* check if user input "cd" as a commands */
         if (strcmp(args[0], "cd") == 0) {
             change_directory(args);
 
@@ -414,6 +460,7 @@ int main() {
             
             pid_t bg_pid = start_bg_process(args);
             
+            /* -1 indicates an error */
             if (bg_pid == -1) {
                 free(input);
                 free(args);
@@ -492,14 +539,12 @@ int main() {
             int bg_args_len = strlen(absolute_path) + 1; /* to account for '\0' */
 
             /* start at 2 to account for args after command */
-            for (int i = 2; i < num_args; i++) {
+            for (int i = 2; args[i] != NULL; i++) {
                 bg_args_len += (strlen(args[i]) + 1);
             }
 
             /* allocate str */
             char *bg_args = malloc(bg_args_len);
-
-            add_bg_process(&head, bg_pid, bg_args);
 
             if (bg_args == NULL) {
                 perror("allocation failed");
@@ -507,7 +552,7 @@ int main() {
                 free(args);
                 continue;
             } 
-                    
+            
             /* replace bg with null character */
             else {
                 bg_args[0] = '\0';
@@ -516,11 +561,14 @@ int main() {
                 strcat(bg_args, absolute_path);
 
                 /* add remaining args */
-                for (int i = 2; i < num_args; i++) {
+                for (int i = 2; args[i] != NULL; i++) {
                     strcat(bg_args, " ");
                     strcat(bg_args, args[i]);
                 }
             }
+
+            add_bg_process(&head, bg_pid, bg_args);
+                    
             free(input);
             free(args);
             continue;
