@@ -66,6 +66,9 @@ void check_bg_processes(struct bg_process **head) {
 
         /* check for errors */
         if (waitpid_result == -1) {
+
+            /* https://man7.org/linux/man-pages/man3/fprintf.3p.html used for info on fprintp,
+               https://psychocod3r.wordpress.com/2019/04/02/a-guide-to-error-handling-in-c/ for info on stderror() & errno */
             fprintf(stderr, "%s\n", strerror(errno));
             previous = current;
             current = current -> next;
@@ -118,33 +121,40 @@ void print_bglist(struct bg_process *head) {
 
 void create_prompt(char *prompt, size_t size) {
     
-     /* HOST_NAME_MAX defined in <limits.h>,
-    add 1 to account for null terminator */
+     /* HOST_NAME_MAX defined in <limits.h>, https://man7.org/linux/man-pages/man0/limits.h.0p.html */
+   /* add 1 to account for null terminator */
     char hostname[HOST_NAME_MAX + 1];
 
     /* PATH_MAX defined in <limits.h> */
+    /* https://man7.org/linux/man-pages/man3/realpath.3.html */
     char cwd[PATH_MAX];
     
+
+    /* https://man7.org/linux/man-pages/man3/getlogin.3.html */
     const char *username = getlogin();
 
     if (username == NULL) {
-        perror("getlogin() failed");
+        perror("getlogin() failed"); /* https://man7.org/linux/man-pages/man3/perror.3.html */
         exit(1);
     }
-        
+    
+    /* https://man7.org/linux/man-pages/man2/gethostname.2.html info on gethostname() */
     /* check if gethostname was successful */
     if (gethostname(hostname, sizeof(hostname)) == -1) {
         perror("error, no hostname");
         exit(1);
     } 
         
-    /* check if getcwd was successful */
+    /* check if getcwd was successful 
+    https://man7.org/linux/man-pages/man3/getcwd.3.html */
     if (getcwd(cwd, sizeof(cwd)) == NULL) {
         perror("error, cannot find cwd");
         exit(1);
     }
 
-    /* store formatted prompt in memory, return val stored in prompt_len */
+    /* store formatted prompt in memory, return val stored in prompt_len 
+    https://man7.org/linux/man-pages/man3/snprintf.3.html , 
+    https://www.geeksforgeeks.org/c/snprintf-c-library/ used for info on snprintf() */
     int prompt_len = snprintf(prompt, size, "%s@%s: %s > ", username, hostname, cwd);
 
     /* check for error */
@@ -169,6 +179,7 @@ void change_directory(char **args) {
     if (args[1] == NULL || strcmp(args[1], "~") == 0) {
         
         /* find users home directory */
+        /* https://man7.org/linux/man-pages/man3/getenv.3.html used for info on getenv() */
         const char *home_dir = getenv("HOME");
 
         /* check if getenv() succeeded */
@@ -183,7 +194,7 @@ void change_directory(char **args) {
     }
     
     else {
-        chdir_result = chdir(args[1]);
+        chdir_result = chdir(args[1]); /* https://www.geeksforgeeks.org/linux-unix/chdir-in-c-language-with-examples/ info on chdir() */
     }
     
     /* check if chdir succeeded */
@@ -208,7 +219,7 @@ pid_t start_bg_process (char **args) {
     else if (pid == 0) {
 
         /* bg process should ignore SIGINT */
-        signal(SIGINT, SIG_IGN);
+        signal(SIGINT, SIG_IGN); /* https://man7.org/linux/man-pages/man2/signal.2.html info on signal handling */
         
         /* receives command and args after bg */
         execvp(args[1], args + 1);
@@ -286,7 +297,8 @@ void execute_foreground(char **args) {
             perror("waitpid error");
         } 
 
-        /* move to new line if foreground process terminated by SIGINT */
+        /* move to new line if foreground process terminated by SIGINT 
+        https://man7.org/linux/man-pages/man3/wait.3p.html used for info */
         if (WIFSIGNALED(status)) {
             printf("\n");
         }
@@ -304,11 +316,14 @@ char **tokenize_args(char *input) {
     char *token;
     int num_args = 0;
 
+    /* https://pubs.opengroup.org/onlinepubs/007904975/functions/strtok.html */
     token = strtok(input, " ");
 
     /* continue parsing same string */
     while (token != NULL) {
 
+        /* https://www.geeksforgeeks.org/c/dynamic-memory-allocation-in-c-using-malloc-calloc-free-and-realloc/ info
+           on realloc(), malloc(), free() */
         /* dynamically increase size of args_temp */
         char **args_temp = realloc(args, (num_args + 1) * sizeof(char *));
 
@@ -346,7 +361,8 @@ char **tokenize_args(char *input) {
 
 int main() {
 
-    /* --- set up SIGINT handling --- */
+    /* --- set up SIGINT handling --- */ 
+    /* https://man7.org/linux/man-pages/man2/sigaction.2.html used for help on constructing sigaction struct */
     
     struct sigaction sa;
 
@@ -374,8 +390,9 @@ int main() {
         exit(1);
     }
 
-    /* tell readline() to periodically call check_sigint() while waiting for user input */
-    rl_event_hook = check_sigint;
+    /* tell readline() to periodically call check_sigint() while waiting for user input 
+    https://man7.org/linux/man-pages/man3/readline.3.html used for info on readline event hook */
+    rl_event_hook = check_sigint; 
 
     
     /* other variables for later use */
@@ -466,7 +483,8 @@ int main() {
                 free(args);
                 continue;
             }
-            
+            /* tutorial slides & https://www.geeksforgeeks.org/linux-unix/which-command-in-linux-with-examples/
+            used for info on which commands */
             /* determine how much memory is needed */
             int which_len = strlen("which ") + strlen(args[1]) + 1; /* +1 for null terminator */
 
@@ -486,7 +504,7 @@ int main() {
 
             /* check if encountered an error or was truncated */
             if (which_result < 0 || which_result >= which_len) {
-                fprintf(stderr, "failed to create which command\n");
+                fprintf(stderr, "failed to create which command\n"); 
                 free(input);
                 free(args);
                 free(which_command);
